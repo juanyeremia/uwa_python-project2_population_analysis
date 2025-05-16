@@ -97,7 +97,75 @@ def remove_invalid(dupclean_csv2,invalid_sa2,sa2_index):
     except Exception as e:
         print(f"Unexpected error in remove_invalid: {e}")
         return []
+# ----------------------------------------------------------------------
 
+# STEP 2: OP1
+'''
+Plan:
+1. Create make_agedict() function containing age groups as keys and empty lists as values.
+2. Create functions for each OP1 output.
+3. At the start of each function, call make_dict().
+4. Each function will fill up the dictionary generated from make_dict().
+'''
+
+# 2.1. Make a dictionary for each level
+def area_dict(csv1_data,header_map1,code_key,name_key):
+    # code_key =  's_t code' or 'sa3 code' or 'sa2 code'
+    # name_key = 's_t name' or 'sa3 name' or 'sa2 name'
+    area_dictionary = {}
+
+    # Check whether code_key or name_key exists in header_map1 dictionary
+    if code_key not in header_map1 or name_key not in header_map1:
+        print(f"Error: '{code_key}' or '{name_key}' not found in header map.")
+        return area_dictionary # Returns empty dictionary
+
+    for row in csv1_data:
+        try:
+            code = row[header_map1[code_key]] 
+            name = row[header_map1[name_key]] 
+            area_dictionary[code] = name
+        except IndexError:
+            print("Warning: Skipping a row due to missing columns.")
+            
+    return area_dictionary
+
+# 2.2. Make age-group dictionary
+'''
+NOTE: Contents of 'header_map2' may be in different order
+header_map2 = {
+    'area_code_level':0,
+    'area_name_level2':1,
+    'age 0-9':2,
+    'age 10-19':3,
+    'age 20-29':4,
+    ...
+}
+
+'''
+
+def make_agedict(csv2_header):
+    keys = []
+    keys_dict = {}
+
+    # Extract age group columns
+    for key in csv2_header:
+        if key[:3] == 'age': # Check if the header contains the word 'age'
+            keys.append(key)
+
+    # Sort the age group list in order of age
+    try:
+        keys.sort(key=lambda x:int(x.split('-')[-1])) # sorting by last number
+    except Exception as e:
+        print(f"Error sorting age group headers: {e}")
+        return keys_dict # Returns empty list
+        
+    # Generate the default dictionary
+    for item in keys:
+        keys_dict.setdefault(item,{})
+
+    return keys_dict
+
+# 
     
 # ----------------------------------------------------------------------
 
@@ -150,4 +218,11 @@ def main(csvfile_1,csvfile_2):
     invalid_sa2 = find_invalid(cleaned_csv2,sa2_index_1)
     final_csv2 = remove_invalid(cleaned_csv2,invalid_sa2,sa2_index_1)
     
-    
+# ---------------------------
+
+# STEP 2 - OP1
+# 2.1. Generate area dictionaries for references
+state_dict = area_dict(final_csv1,header_map1,'s_t code','s_t name')
+sa3_dict = area_dict(final_csv1,header_map1,'sa3 code','sa3 name')
+sa2_dict = area_dict(final_csv1,header_map1,'sa2 code','sa2 name')
+
