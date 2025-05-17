@@ -34,6 +34,20 @@ def map_headers(header_row): # 'header_row' = ['State Name', 'SA2 Code', ...]
     except Exception as e:
         print(f"Unexpected error in map_headers: {e}")
         return {}
+    
+# 1.2.1. Get SA2 code index, because each file has different SA2 code heaeder name
+def detect_sa2_index(header,data):
+    first_row_data = data[0]
+    try:
+        for i in range(len(first_row_data)):
+            value = first_row_data[i] 
+            if value.isdigit() and len(value) == 9: # Check valus is all digits and length of characters is 9
+                return i
+    except Exception as e:
+        print(f"Error detecting SA2 code column: {e}")
+
+    print("Warning: SA2 code column not found.")
+    return None
 
 # 1.3. Cleanup data
 # 1.3.1 Removing duplicates
@@ -191,8 +205,8 @@ def main(csvfile_1,csvfile_2):
     header_map2 = map_headers(csv2_header)
     
     # SA2 code index from each dictionary
-    sa2_index_1 = header_map1.get('sa2 code')
-    sa2_index_2 = header_map2.get('sa2 code')
+    sa2_index_1 = detect_sa2_index(csv1_header,csv1_data)
+    sa2_index_2 = detect_sa2_index(csv2_header,csv2_data)
     
     # Error handling for sa2 mapping
     if sa2_index_1 is None or sa2_index_2 is None:
