@@ -227,7 +227,30 @@ def op1(csv2_header,final_csv2,header_map2,sa2_index_2,state_dict,sa3_dict,sa2_d
         # After getting max value of each, put them in a list and assign to op1_result with the corresponding age_group as key
         op1_result[age_group] = [largest_state,largest_sa3,largest_sa2]
     
-    return op1_result
+    return op1_result,sa3_pop,sa2_pop
+
+# ----------------------------------------------------------------------
+# STEP 3 - OP2
+def op2(sa3_pop,sa3_dict):
+    sa3_data = {}
+    pop_per_sa3 = {} # will contain {}'adelaide city': 129000,'unley':154039,...}
+
+# 1. Sum population across al age groups
+    for age_group in sa3_pop: # Looping across each age_group's dictionary
+        for sa3_name,pop in sa3_pop[age_group].items(): # .item() returns a tuple of key-value pairs
+            pop_per_sa3.setdefault(sa3_name,0)
+            pop_per_sa3[sa3_name] += pop
+
+# 2. Filter sa3 with pop > 150,000 and assign sa3_code
+    for sa3_name,total_pop in pop_per_sa3.items():
+        if int(total_pop) > 150000:
+        # 2.1 Find matchin sa3_code in sa3_dict
+            for code,name in sa3_dict.items():
+                if name == sa3_name:
+                    sa3_data[sa3_name] = {'population':total_pop,'sa3_code':code}
+                    break
+
+    return sa3_data
     
 # ----------------------------------------------------------------------
 
