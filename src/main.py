@@ -179,7 +179,55 @@ def make_agedict(csv2_header):
 
     return keys_dict
 
-# 
+# 2.3. Get population count
+def get_pop_count(csv2_header,csv2_data,header_map2,area_level_dict,sa2_index,level):
+    agedict = make_agedict(csv2_header)
+
+    for row in csv2_data:
+        # 1. Get sa2 code
+        sa2_code = row[sa2_index]
+        
+        # 2. Get area code based on level
+        if level == "state":
+            area_code = sa2_code[:1]
+        elif level == "sa3":
+            area_code = sa2_code[:5]
+        else: # sa2
+            area_code = sa2_code
+        
+        # 3. Map area name from area code
+        area_name = area_level_dict.get(area_code) 
+        if not area_name:
+            continue # Skip if area not found
+        
+        # 4. Get population data
+        for age_group in agedict:
+            try:
+                pop = int(row[header_map2[age_group]])
+                agedict[age_group].setdefault(area_name,0)
+                agedict[age_group][area_name] += pop
+            except:
+                continue # Skip invalid values
+
+    return agedict
+
+def op1(csv2_header,final_csv2,header_map2,sa2_index_2,state_dict,sa3_dict,sa2_dict):
+    # 1. Get populatin count dictionaries
+    state_pop = get_pop_count(csv2_header,final_csv2,header_map2,state_dict,sa2_index_2,'state')
+    sa3_pop = get_pop_count(csv2_header,final_csv2,header_map2,sa3_dict,sa2_index_2,'sa3')
+    sa2_pop = get_pop_count(csv2_header,final_csv2,header_map2,sa2_dict,sa2_index_2,'sa2')
+    
+    # 2. Build result
+    op1_result = {} 
+    for age_group in state_pop: # Loop through all area level pop count at once because they all have the same age_group keys
+        largest_state = max(state_pop[age_group],key=state_pop[age_group].get)
+        largest_sa3 = max(sa3_pop[age_group],key=sa3_pop[age_group].get)
+        largest_sa2 = max(sa2_pop[age_group],key=sa2_pop[age_group].get)
+        
+        # After getting max value of each, put them in a list and assign to op1_result with the corresponding age_group as key
+        op1_result[age_group] = [largest_state,largest_sa3,largest_sa2]
+    
+    return op1_result
     
 # ----------------------------------------------------------------------
 
@@ -234,9 +282,11 @@ def main(csvfile_1,csvfile_2):
     
 # ---------------------------
 
-# STEP 2 - OP1
-# 2.1. Generate area dictionaries for references
-state_dict = area_dict(final_csv1,header_map1,'s_t code','s_t name')
-sa3_dict = area_dict(final_csv1,header_map1,'sa3 code','sa3 name')
-sa2_dict = area_dict(final_csv1,header_map1,'sa2 code','sa2 name')
+    # STEP 2 - OP1
+    # 2.1. Generate area dictionaries for references
+    state_dict = area_dict(final_csv1,header_map1,'s_t code','s_t name')
+    sa3_dict = area_dict(final_csv1,header_map1,'sa3 code','sa3 name')
+    sa2_dict = area_dict(final_csv1,header_map1,'sa2 code','sa2 name')
 
+    OP1 = op1(csv2_header, final_csv2, header_map2, sa2_index_2, state_dict, sa3_dict, sa2_dict)
+    return OP1
