@@ -220,9 +220,9 @@ def op1(csv2_header,final_csv2,header_map2,sa2_index_2,state_dict,sa3_dict,sa2_d
     # 2. Build result
     op1_result = {} 
     for age_group in state_pop: # Loop through all area level pop count at once because they all have the same age_group keys
-        largest_state = max(state_pop[age_group],key=state_pop[age_group].get)
-        largest_sa3 = max(sa3_pop[age_group],key=sa3_pop[age_group].get)
-        largest_sa2 = max(sa2_pop[age_group],key=sa2_pop[age_group].get)
+        largest_state = sorted(state_pop[age_group],key=state_pop[age_group].get)[-1]
+        largest_sa3 = sorted(sa3_pop[age_group],key=sa3_pop[age_group].get)[-1]
+        largest_sa2 = sorted(sa2_pop[age_group],key=sa2_pop[age_group].get)[-1]
         
         # After getting max value of each, put them in a list and assign to op1_result with the corresponding age_group as key
         op1_result[age_group] = [largest_state,largest_sa3,largest_sa2]
@@ -231,26 +231,54 @@ def op1(csv2_header,final_csv2,header_map2,sa2_index_2,state_dict,sa3_dict,sa2_d
 
 # ----------------------------------------------------------------------
 # STEP 3 - OP2
-def op2(sa3_pop,sa3_dict):
+
+# 3.1. Function to sum all population across all age
+def sum_all_pop(area_pop):
+    total_pop = {}
+    for age_group in area_pop:
+        for area_name,pop in area_pop[age_group].items():
+            total_pop.setdefault(area_name,0)
+            total_pop[area_name] += pop
+
+    return total_pop
+
+# 3.2. Function to filter SA3 > 150,000
+def sa3_over_150k(sum_population,area_dict):
     sa3_data = {}
-    pop_per_sa3 = {} # will contain {}'adelaide city': 129000,'unley':154039,...}
-
-# 1. Sum population across al age groups
-    for age_group in sa3_pop: # Looping across each age_group's dictionary
-        for sa3_name,pop in sa3_pop[age_group].items(): # .item() returns a tuple of key-value pairs
-            pop_per_sa3.setdefault(sa3_name,0)
-            pop_per_sa3[sa3_name] += pop
-
-# 2. Filter sa3 with pop > 150,000 and assign sa3_code
-    for sa3_name,total_pop in pop_per_sa3.items():
+    for area_name,total_pop in sum_population.items():
         if int(total_pop) > 150000:
-        # 2.1 Find matchin sa3_code in sa3_dict
-            for code,name in sa3_dict.items():
-                if name == sa3_name:
-                    sa3_data[sa3_name] = {'population':total_pop,'sa3_code':code}
+            for code,name in area_dict.items():
+                if name == area_name:
+                    sa3_data[code] = {'population':total_pop,'sa3_name':name}
                     break
-
+    # Convert sa3_name to sa3_code
     return sa3_data
+
+# 3.3. Find largest SA2 per SA3
+def largest_sa2_per_sa3(sum_pop,sa2_dict):
+    grouped = {} # {sa3_code: {sa2_code:population}}
+    sorted_grouped = {} # {sa3_code:[largest_sa2_code,its_pop]}
+
+    for sa2_name,total_pop in sum_pop.items(): 
+        for sa2_code,name in sa2_dict.items():
+            if name == sa2_name:
+                sa3_code = sa2_code[:5]
+                grouped.setdefault(sa3_code,{})
+                grouped[sa3_code][sa2_code] = total_pop
+                break
+    
+    for sa3_code,sa2_data in grouped.items():
+        # Sort SA2s by population descending
+        sorted_sa2s = sorted(sa2_data.items(),key=lambda x: x[1])
+        largest_sa2_code,largest_pop = sorted_sa2s[-1]
+        sorted_grouped[sa3_code] = [largest_sa2_code,largest_pop]
+
+    return sorted_grouped
+
+
+
+def op2(sa3_pop,sa3_dict):
+
     
 # ----------------------------------------------------------------------
 
@@ -313,3 +341,19 @@ def main(csvfile_1,csvfile_2):
 
     OP1 = op1(csv2_header, final_csv2, header_map2, sa2_index_2, state_dict, sa3_dict, sa2_dict)
     return OP1
+
+    # STEP 3 - OP2
+    # 3.1 Get total SA3 population across all age group and filter > 150,000
+    sa3_total_pop = sum_all_pop(sa3_pop)
+    sa3_data = sa3_over_150k(sa3_total_pop,sa3_dict)
+    
+    # 3.2. Find largest SA2
+    # 3.2.1. Sum total SA2 population across all age groups
+    sa2_total_pop = sum_all_pop(sa2_pop)
+    largest_sa2_per_sa3 = largest_sa2_per_sa3(sa2_total_pop,sa2_dict)
+    
+    
+    
+    
+    
+    
