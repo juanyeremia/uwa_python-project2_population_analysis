@@ -29,6 +29,9 @@ def map_headers(header_row): # 'header_row' = ['State Name', 'SA2 Code', ...]
     try:
         for i in range(len(header_row)):
             key = header_row[i].strip().lower() # Header rows can have mixed upper/lower cases
+            # Normalize column 'age 80 anda over' to age 80-None
+            if key[:3] == 'age' and "and over" in key:
+                key = key.replace("and over","-None")
             header_index[key] = i
         return header_index
     except Exception as e:
@@ -163,12 +166,14 @@ def make_agedict(csv2_header):
 
     # Extract age group columns
     for key in csv2_header:
-        if key[:3] == 'age': # Check if the header contains the word 'age'
+        if key[:3].lower() == 'age': # Check if the header contains the word 'age'
+            key = key.strip().lower()
+            if "and over" in key:
+                key = key.replace("and over","-None")
             keys.append(key)
-
     # Sort the age group list in order of age
-    try:
-        keys.sort(key=lambda x:int(x.split('-')[-1])) # sorting by last number
+    try:   
+        keys.sort(key=lambda x:int(x.replace("age ","").split('-')[0])) # sorting by last number
     except Exception as e:
         print(f"Error sorting age group headers: {e}")
         return keys_dict # Returns empty list
@@ -217,6 +222,7 @@ def op1(csv2_header,final_csv2,header_map2,sa2_index_2,state_dict,sa3_dict,sa2_d
     sa3_pop = get_pop_count(csv2_header,final_csv2,header_map2,sa3_dict,sa2_index_2,'sa3')
     sa2_pop = get_pop_count(csv2_header,final_csv2,header_map2,sa2_dict,sa2_index_2,'sa2')
     
+    
     # 2. Build result
     op1_result = {} 
     for age_group in state_pop: # Loop through all area level pop count at once because they all have the same age_group keys
@@ -231,18 +237,16 @@ def op1(csv2_header,final_csv2,header_map2,sa2_index_2,state_dict,sa3_dict,sa2_d
 
 # ----------------------------------------------------------------------
 # STEP 3 - OP2
-
-# 3.1. Function to sum all population across all age
+# 3.1 Sum total of populations across all age groups for each area level
 def sum_all_pop(area_pop):
     total_pop = {}
     for age_group in area_pop:
         for area_name,pop in area_pop[age_group].items():
             total_pop.setdefault(area_name,0)
             total_pop[area_name] += pop
-
     return total_pop
 
-# 3.2. Function to filter SA3 > 150,000
+# 3.2 Finding SA3 with populations over 150,000
 def sa3_over_150k(sum_population,area_dict):
     sa3_data = {}
     for area_name,total_pop in sum_population.items():
@@ -252,9 +256,9 @@ def sa3_over_150k(sum_population,area_dict):
                     sa3_data[code] = {'population':total_pop,'sa3_name':name}
                     break
     # Convert sa3_name to sa3_code
-    return sa3_data
+    return sa3_data # {sa3_code:{'population':...,'sa3_name':...}}
 
-# 3.3. Find largest SA2 per SA3
+# 3.3 Finding largest SA2 code and population count per SA3 above 150,000
 def largest_sa2_per_sa3(sum_pop,sa2_dict):
     grouped = {} # {sa3_code: {sa2_code:population}}
     sorted_grouped = {} # {sa3_code:[largest_sa2_code,its_pop]}
@@ -275,10 +279,52 @@ def largest_sa2_per_sa3(sum_pop,sa2_dict):
 
     return sorted_grouped
 
+# 3.4 Calculate standard deviation across all age group for a given SA2
+def std_dev(sa2_code,sa2_pop,sa2_dict):
+    # Get current sa2_name from sa2_dict based on current sa2_code
+    sa2_name = sa2_dict.get(sa2_code)
+    if not sa2_name :           # If sa2_name not found, return 0.0 std dev
+        return 0.0 
 
+    curr_sa2_pop = []
+    for age_group in sa2_pop:
+        curr_sa2_pop.append(sa2_pop[age_group][sa2_name])
+    
+    if not curr_sa2_pop:        # If curr_sa2_pop empty, return 0.0 std dev
+        return 0.0
+        
+    # std dev calculation
+    mean = sum(curr_sa2_pop)/len(curr_sa2_pop)
+    variance = 0
+    for pop in curr_sa2_pop:
+        variance += (pop - mean) ** 2 / len(curr_sa2_pop)
+    std = variance ** 0.5
+    
+    return round(std,4)
 
-def op2(sa3_pop,sa3_dict):
+def op2(sa3_pop, sa2_pop, sa3_dict, sa2_dict):
+    # Get total population for SA3 and SA2
+    sa3_total = sum_all_pop(sa3_pop)
+    sa2_total = sum_all_pop(sa2_pop)
+  
+    # Find SA3 over 150,000 and get largest SA2 code and population  
+    sa3_over_150k_dict = sa3_over_150k(sa3_total, sa3_dict)
+    largest_sa2s = largest_sa2_per_sa3(sa2_total,sa2_dict)
 
+    final_output = {}  # {state_code: {sa3_code: [sa2_code, pop, std]}}
+    
+    # Combine `largest_sa2s' with 'std_dev'
+    for sa3_code in sa3_over_150k_dict:
+        state_code = sa3_code[0]
+        if sa3_code not in largest_sa2s:
+            continue
+        sa2_code, pop = largest_sa2s[sa3_code]
+        std = std_dev(sa2_code, sa2_pop,sa2_dict)
+
+        final_output.setdefault(state_code, {})
+        final_output[state_code][sa3_code] = [sa2_code, pop, std]
+
+    return final_output
     
 # ----------------------------------------------------------------------
 
@@ -302,6 +348,7 @@ def main(csvfile_1,csvfile_2):
     # 1.2 Header mapping
     header_map1 = map_headers(csv1_header)
     header_map2 = map_headers(csv2_header)
+    
     
     # SA2 code index from each dictionary
     sa2_index_1 = detect_sa2_index(csv1_header,csv1_data)
@@ -333,27 +380,18 @@ def main(csvfile_1,csvfile_2):
     
 # ---------------------------
 
-    # STEP 2 - OP1
-    # 2.1. Generate area dictionaries for references
+    # Generate area dictionaries for references
     state_dict = area_dict(final_csv1,header_map1,'s_t code','s_t name')
     sa3_dict = area_dict(final_csv1,header_map1,'sa3 code','sa3 name')
     sa2_dict = area_dict(final_csv1,header_map1,'sa2 code','sa2 name')
 
-    OP1 = op1(csv2_header, final_csv2, header_map2, sa2_index_2, state_dict, sa3_dict, sa2_dict)
-    return OP1
-
-    # STEP 3 - OP2
-    # 3.1 Get total SA3 population across all age group and filter > 150,000
-    sa3_total_pop = sum_all_pop(sa3_pop)
-    sa3_data = sa3_over_150k(sa3_total_pop,sa3_dict)
+    OP1_result, sa3_pop, sa2_pop = op1(csv2_header, final_csv2, header_map2, sa2_index_2, state_dict, sa3_dict, sa2_dict)
+    #op() result is broken down because 'sa3_pop' and 'sa2_pop' are needed for op2
     
-    # 3.2. Find largest SA2
-    # 3.2.1. Sum total SA2 population across all age groups
-    sa2_total_pop = sum_all_pop(sa2_pop)
-    largest_sa2_per_sa3 = largest_sa2_per_sa3(sa2_total_pop,sa2_dict)
+    OP2_result = op2(sa3_pop, sa2_pop, sa3_dict, sa2_dict)
     
-    
-    
+    print(OP1_result)
+    return OP1_result, OP2_result,{}
     
     
     
