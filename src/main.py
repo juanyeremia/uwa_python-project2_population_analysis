@@ -31,7 +31,7 @@ def map_headers(header_row): # 'header_row' = ['State Name', 'SA2 Code', ...]
             key = header_row[i].strip().lower() # Header rows can have mixed upper/lower cases
             # Normalize column 'age 80 anda over' to age 80-None
             if key[:3] == 'age' and "and over" in key:
-                key = key.replace("and over","-None")
+                key = key.replace(" and over","-None")
             header_index[key] = i
         return header_index
     except Exception as e:
@@ -169,7 +169,7 @@ def make_agedict(csv2_header):
         if key[:3].lower() == 'age': # Check if the header contains the word 'age'
             key = key.strip().lower()
             if "and over" in key:
-                key = key.replace("and over","-None")
+                key = key.replace(" and over","-None")
             keys.append(key)
     # Sort the age group list in order of age
     try:   
@@ -230,12 +230,13 @@ def op1(csv2_header,final_csv2,header_map2,sa2_index_2,state_dict,sa3_dict,sa2_d
                 not sa3_pop[age_group] or not sa2_pop.get(age_group) or
                 not sa2_pop[age_group]):
                 continue
-              
+            
+            label = age_group.replace("age ","") # Gets rid of 'age ' in the age_group header
             largest_state = sorted(state_pop[age_group],key=state_pop[age_group].get)[-1]
             largest_sa3 = sorted(sa3_pop[age_group],key=sa3_pop[age_group].get)[-1]
             largest_sa2 = sorted(sa2_pop[age_group],key=sa2_pop[age_group].get)[-1]
             
-            op1_result[age_group] = [largest_state,largest_sa3,largest_sa2]
+            op1_result[label] = [largest_state,largest_sa3,largest_sa2]
         
         except Exception as e:
             print(f"Error processing age group '{age_group}': '{e}'")
@@ -341,7 +342,7 @@ def std_dev(sa2_code,sa2_pop,sa2_dict):
             try:
                 pop = sa2_pop[age_group].get(sa2_name)
                 if pop is not None:
-                    curr_sa2_pop.append(sa2_pop[age_group][sa2_name])
+                    curr_sa2_pop.append(int(pop)) 
             except ValueError:
                 print(f"Invalid population value for '{sa2_name}' in '{age_group}': {pop}")
                 continue
@@ -349,13 +350,15 @@ def std_dev(sa2_code,sa2_pop,sa2_dict):
         if not curr_sa2_pop:        # If curr_sa2_pop empty, return 0.0 std dev
             print(f"Warning: No population values found for SA2 '{sa2_name}'.")
             return 0.0
-            
+        
+        
+        
         # std dev calculation
         mean = sum(curr_sa2_pop)/len(curr_sa2_pop)
         variance = 0
         for pop in curr_sa2_pop:
-            variance += (pop - mean) ** 2 / len(curr_sa2_pop)
-        std = variance ** 0.5
+            variance += (pop - mean) ** 2 
+        std = (variance/(len(curr_sa2_pop)-1)) ** 0.5
         
         return round(std,4)
     
@@ -375,6 +378,11 @@ def op2(sa3_pop, sa2_pop, sa3_dict, sa2_dict):
         sa3_over_150k_dict = sa3_over_150k(sa3_total, sa3_dict)
         largest_sa2s = largest_sa2_per_sa3(sa2_total,sa2_dict)      
         
+        # Generate the states keys in the dict
+        for sa3_code in sa3_dict:
+            state_code = sa3_code[0]
+            final_output.setdefault(state_code,{})
+        
         # Build output by combining `largest_sa2s' with 'std_dev'
         for sa3_code in sa3_over_150k_dict:
             try:
@@ -386,7 +394,6 @@ def op2(sa3_pop, sa2_pop, sa3_dict, sa2_dict):
                 sa2_code, pop = largest_sa2s[sa3_code]
                 std = std_dev(sa2_code, sa2_pop,sa2_dict)
 
-                final_output.setdefault(state_code, {})
                 final_output[state_code][sa3_code] = [sa2_code, pop, std]
             
             except Exception as e:
@@ -459,11 +466,10 @@ def main(csvfile_1,csvfile_2):
 
     OP1_result, sa3_pop, sa2_pop = op1(csv2_header, final_csv2, header_map2, sa2_index_2, state_dict, sa3_dict, sa2_dict)
     #op() result is broken down because 'sa3_pop' and 'sa2_pop' are needed for op2
-    
+
     OP2_result = op2(sa3_pop, sa2_pop, sa3_dict, sa2_dict)
     
-    print(OP1_result)
-    return OP1_result, OP2_result,{}
+    return OP2_result
     
     
     
