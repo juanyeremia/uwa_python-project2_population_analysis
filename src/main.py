@@ -217,23 +217,31 @@ def get_pop_count(csv2_header,csv2_data,header_map2,area_level_dict,sa2_index,le
     return agedict
 
 def op1(csv2_header,final_csv2,header_map2,sa2_index_2,state_dict,sa3_dict,sa2_dict):
-    # 1. Get populatin count dictionaries
+# 1. Get populatin count dictionaries
     state_pop = get_pop_count(csv2_header,final_csv2,header_map2,state_dict,sa2_index_2,'state')
     sa3_pop = get_pop_count(csv2_header,final_csv2,header_map2,sa3_dict,sa2_index_2,'sa3')
     sa2_pop = get_pop_count(csv2_header,final_csv2,header_map2,sa2_dict,sa2_index_2,'sa2')
     
-    
-    # 2. Build result
+# 2. Build result
     op1_result = {} 
-    for age_group in state_pop: # Loop through all area level pop count at once because they all have the same age_group keys
-        largest_state = sorted(state_pop[age_group],key=state_pop[age_group].get)[-1]
-        largest_sa3 = sorted(sa3_pop[age_group],key=sa3_pop[age_group].get)[-1]
-        largest_sa2 = sorted(sa2_pop[age_group],key=sa2_pop[age_group].get)[-1]
+    for age_group in state_pop:
+        try:
+            if (not state_pop[age_group] or not sa3_pop.get(age_group) or 
+                not sa3_pop[age_group] or not sa2_pop.get(age_group) or
+                not sa2_pop[age_group]):
+                continue
+              
+            largest_state = sorted(state_pop[age_group],key=state_pop[age_group].get)[-1]
+            largest_sa3 = sorted(sa3_pop[age_group],key=sa3_pop[age_group].get)[-1]
+            largest_sa2 = sorted(sa2_pop[age_group],key=sa2_pop[age_group].get)[-1]
+            
+            op1_result[age_group] = [largest_state,largest_sa3,largest_sa2]
         
-        # After getting max value of each, put them in a list and assign to op1_result with the corresponding age_group as key
-        op1_result[age_group] = [largest_state,largest_sa3,largest_sa2]
+        except Exception as e:
+            print(f"Error processing age group '{age_group}': '{e}'")
+            continue
     
-    return op1_result,sa3_pop,sa2_pop
+    return op1_result,sa3_pop,sa2_pop # 'sa3_pop' and 'sa2_pop' for op2()
 
 # ----------------------------------------------------------------------
 # STEP 3 - OP2
@@ -241,88 +249,152 @@ def op1(csv2_header,final_csv2,header_map2,sa2_index_2,state_dict,sa3_dict,sa2_d
 def sum_all_pop(area_pop):
     total_pop = {}
     for age_group in area_pop:
-        for area_name,pop in area_pop[age_group].items():
-            total_pop.setdefault(area_name,0)
-            total_pop[area_name] += pop
+        try:
+            for area_name,pop in area_pop[age_group].items():
+                try:
+                    total_pop.setdefault(area_name,0)
+                    total_pop[area_name] += pop
+                except ValueError:
+                    print(f"Invalid population value for '{area_name}' in '{age_group}': {pop}")
+                    continue
+        except Exception as e:
+            print(f"Skipping age group '{age_group}' due to error: {e}")
+            continue
+
     return total_pop
 
 # 3.2 Finding SA3 with populations over 150,000
 def sa3_over_150k(sum_population,area_dict):
     sa3_data = {}
+    
     for area_name,total_pop in sum_population.items():
-        if int(total_pop) > 150000:
-            for code,name in area_dict.items():
-                if name == area_name:
-                    sa3_data[code] = {'population':total_pop,'sa3_name':name}
-                    break
+        try:
+            if int(total_pop) > 150000:
+                found = False
+                for code,name in area_dict.items():
+                    if name == area_name:            # If found sa3 > 150,000 and in area_dict
+                        sa3_data[code] = {'population':total_pop,'sa3_name':name}
+                        found = True
+                        break
+                if not found:
+                    print(f"Warning: SA3 name '{area_name}' not found in area_dict.")
+        except ValueError:
+            print(f"Invalid population value for '{area_name}': {total_pop}")
+            continue
+        except Exception as e:
+            print(f"Error processing SA3 '{area_name}': {e}")
+            continue
+            
     # Convert sa3_name to sa3_code
-    return sa3_data # {sa3_code:{'population':...,'sa3_name':...}}
+    return sa3_data
 
 # 3.3 Finding largest SA2 code and population count per SA3 above 150,000
 def largest_sa2_per_sa3(sum_pop,sa2_dict):
     grouped = {} # {sa3_code: {sa2_code:population}}
     sorted_grouped = {} # {sa3_code:[largest_sa2_code,its_pop]}
 
-    for sa2_name,total_pop in sum_pop.items(): 
-        for sa2_code,name in sa2_dict.items():
-            if name == sa2_name:
-                sa3_code = sa2_code[:5]
-                grouped.setdefault(sa3_code,{})
-                grouped[sa3_code][sa2_code] = total_pop
-                break
+    for sa2_name,total_pop in sum_pop.items():
+        try:
+            total_pop = int(total_pop) # Make sure it's nto a valid number
+            found = False 
+            for sa2_code,name in sa2_dict.items():
+                if name == sa2_name:
+                    sa3_code = sa2_code[:5]
+                    grouped.setdefault(sa3_code,{})
+                    grouped[sa3_code][sa2_code] = total_pop
+                    found = True
+                    break
+            if not found:
+                print(f"Warning: SA2 name '{sa2_name}' not found in sa2_dict.")
+        except ValueError:
+            print(f"Invalid population value for SA2 '{sa2_name}': {total_pop}.")
+            continue
+        except Exception as e:
+            print(f"Error grouping SA2 '{sa2_name}': {e}")
+            continue
     
     for sa3_code,sa2_data in grouped.items():
-        # Sort SA2s by population descending
-        sorted_sa2s = sorted(sa2_data.items(),key=lambda x: x[1])
-        largest_sa2_code,largest_pop = sorted_sa2s[-1]
-        sorted_grouped[sa3_code] = [largest_sa2_code,largest_pop]
+        try:
+            if not sa2_data:
+                print(f"Wraning: No SA2 data under SA3 code '{sa3_code}'.")
+                continue
+            # Sort SA2s by population descending
+            sorted_sa2s = sorted(sa2_data.items(),key=lambda x: x[1])
+            largest_sa2_code,largest_pop = sorted_sa2s[-1]
+            sorted_grouped[sa3_code] = [largest_sa2_code,largest_pop]
+        except Exception as e:
+            print(f"Error selecting largest SA2 in SA3 '{sa3_code}': {e}")
+            continue
 
     return sorted_grouped
 
 # 3.4 Calculate standard deviation across all age group for a given SA2
 def std_dev(sa2_code,sa2_pop,sa2_dict):
-    # Get current sa2_name from sa2_dict based on current sa2_code
-    sa2_name = sa2_dict.get(sa2_code)
-    if not sa2_name :           # If sa2_name not found, return 0.0 std dev
-        return 0.0 
-
-    curr_sa2_pop = []
-    for age_group in sa2_pop:
-        curr_sa2_pop.append(sa2_pop[age_group][sa2_name])
+    try:
+        # Get current sa2_name from sa2_dict based on current sa2_code
+        sa2_name = sa2_dict.get(sa2_code)
+        if not sa2_name :           # If sa2_name not found, return 0.0 std dev
+            return 0.0 
     
-    if not curr_sa2_pop:        # If curr_sa2_pop empty, return 0.0 std dev
-        return 0.0
+        curr_sa2_pop = []
+        for age_group in sa2_pop:
+            try:
+                pop = sa2_pop[age_group].get(sa2_name)
+                if pop is not None:
+                    curr_sa2_pop.append(sa2_pop[age_group][sa2_name])
+            except ValueError:
+                print(f"Invalid population value for '{sa2_name}' in '{age_group}': {pop}")
+                continue
+    
+        if not curr_sa2_pop:        # If curr_sa2_pop empty, return 0.0 std dev
+            print(f"Warning: No population values found for SA2 '{sa2_name}'.")
+            return 0.0
+            
+        # std dev calculation
+        mean = sum(curr_sa2_pop)/len(curr_sa2_pop)
+        variance = 0
+        for pop in curr_sa2_pop:
+            variance += (pop - mean) ** 2 / len(curr_sa2_pop)
+        std = variance ** 0.5
         
-    # std dev calculation
-    mean = sum(curr_sa2_pop)/len(curr_sa2_pop)
-    variance = 0
-    for pop in curr_sa2_pop:
-        variance += (pop - mean) ** 2 / len(curr_sa2_pop)
-    std = variance ** 0.5
+        return round(std,4)
     
-    return round(std,4)
+    except Exception as e:
+        print(f"Unexpected error in std_dev for SA2 code '{sa2_code}': {e}")
+        return 0.0
 
 def op2(sa3_pop, sa2_pop, sa3_dict, sa2_dict):
-    # Get total population for SA3 and SA2
-    sa3_total = sum_all_pop(sa3_pop)
-    sa2_total = sum_all_pop(sa2_pop)
-  
-    # Find SA3 over 150,000 and get largest SA2 code and population  
-    sa3_over_150k_dict = sa3_over_150k(sa3_total, sa3_dict)
-    largest_sa2s = largest_sa2_per_sa3(sa2_total,sa2_dict)
-
     final_output = {}  # {state_code: {sa3_code: [sa2_code, pop, std]}}
     
-    # Combine `largest_sa2s' with 'std_dev'
-    for sa3_code in sa3_over_150k_dict:
-        state_code = sa3_code[0]
-        if sa3_code not in largest_sa2s:
-            continue
-        sa2_code, pop = largest_sa2s[sa3_code]
-        std = std_dev(sa2_code, sa2_pop,sa2_dict)
+    try:
+        # Get total population for SA3 and SA2
+        sa3_total = sum_all_pop(sa3_pop)
+        sa2_total = sum_all_pop(sa2_pop)
+      
+        # Find SA3 over 150,000 and get largest SA2 code and population  
+        sa3_over_150k_dict = sa3_over_150k(sa3_total, sa3_dict)
+        largest_sa2s = largest_sa2_per_sa3(sa2_total,sa2_dict)      
+        
+        # Build output by combining `largest_sa2s' with 'std_dev'
+        for sa3_code in sa3_over_150k_dict:
+            try:
+                state_code = sa3_code[0]
+                if sa3_code not in largest_sa2s:
+                    print(f"Warning: SA3 code '{sa3_code}' missing in largest_sa2s.")
+                    continue
+                
+                sa2_code, pop = largest_sa2s[sa3_code]
+                std = std_dev(sa2_code, sa2_pop,sa2_dict)
 
-        final_output.setdefault(state_code, {})
-        final_output[state_code][sa3_code] = [sa2_code, pop, std]
+                final_output.setdefault(state_code, {})
+                final_output[state_code][sa3_code] = [sa2_code, pop, std]
+            
+            except Exception as e:
+                print(f"Error processing SA3 code '{sa3_code}': {e}")
+                continue
+    
+    except Exception as e:
+        print(f"Unexpected error in OP2: {e}")    
 
     return final_output
     
