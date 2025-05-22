@@ -347,7 +347,7 @@ def std_dev(sa2_code,sa2_pop,sa2_dict):
                 print(f"Invalid population value for '{sa2_name}' in '{age_group}': {pop}")
                 continue
     
-        if not curr_sa2_pop:        # If curr_sa2_pop empty, return 0.0 std dev
+        if not curr_sa2_pop or len(surr_sa2_pop) < 2:  # If curr_sa2_pop empty or only one age group has value, return 0.0 std dev
             print(f"Warning: No population values found for SA2 '{sa2_name}'.")
             return 0.0
         
@@ -403,8 +403,136 @@ def op2(sa3_pop, sa2_pop, sa3_dict, sa2_dict):
     except Exception as e:
         print(f"Unexpected error in OP2: {e}")    
 
-    return final_output
+    return final_output,sa3_total,sa2_total
+
+# ----------------------------------------------------------------------
+'''
+STEP 4 - OP3
+4.1. Get dictionary of SA3s with 15 or more SA2s
+4.2. Get Cosine similarity
+    4.2.1. Build SA2 population lists per age group
+    4.2.2. Calculate Cosine similarity
+4.3. Final OP3
+'''
+
+# 4.1. Get dictionary of SA3s with 15 or more SA2s
+def get_sa3_15_sa2s(sa2_dict,sa3_dict):
+    sa2_per_sa3 = {} # {'adelaide city':['adelaide','north adelaide','adelaide hills']}
+    sa3_15_sa2s = {}
+
+    # Get dictionary of SA3 with their SA2s as a list 
+    for sa3_code,sa3_name in sa3_dict.items():
+        for sa2_code,sa2_name in sa2_dict.items():
+            # Check if SA2 is part of SA3
+            if sa2_code[:5] == sa3_code:
+                sa2_per_sa3.setdefault(sa3_name,[])
+                sa2_per_sa3[sa3_name].append(sa2_name)
     
+    # Get SA3s with 15 or more SA2s
+    for sa3_name in sa2_per_sa3:
+        if len(sa2_per_sa3[sa3_name]) >= 15:
+            sa3_15_sa2s.setdefault(sa3_name,[])
+            sa3_15_sa2s[sa3_name] = sa2_per_sa3[sa3_name]
+    
+    return sa3_15_sa2s
+
+# 4.2. Cosine Similarity
+# 4.2.1. Build SA2 population lists per age group
+def build_sa2_vectors(sa3_15_sa2s,sa2_pop):
+    age_groups = list(sa2_pop.keys()) # ['0-9','10-19',...]
+    sa2_vectors = {} # Build SA2 population list -> {'landsdale': [pop0_9,pop10_19,...],'carramar':[pop0_9,pop10_19,...],...}
+    
+    for sa3_name in sa3_15_sa2s:
+        sa2_list = sa3_15_sa2s[sa3_name] # Get lists of SA2s in this SA3
+
+        # For each SA2 in the list:
+        for sa2 in sa2_list:
+            if sa2 not in sa2_vectors: # Avoid re-processing the same SA2
+                vector = []
+                
+                # Build the population vector for current SA2 across all age group
+                for age in age_groups:
+                    try:
+                        pop = sa2_pop[age][sa2] # Get pop data for that age groupd
+                    except KeyError:
+                        # Either age group or SA2 is missing froom data
+                        pop = 0
+                    vector.append(pop)
+                
+                if any(vector):
+                    sa2_vectors[sa2] = vector # Store the vector for this SA2    
+                
+    return sa2_vectors
+
+# 4.2.2. Calculate Cosine similarity
+def cosine_similarity(v1, v2):
+    if not v1 or not v2:
+        print("Warning: One or both vectors are empty.")
+        return 0.0
+    
+    if len(v1) != len(v2):
+        print("Warning: Vectors have different lengths.")
+
+    dot = 0      # Dot product of the two vectors
+    mag1 = 0     # Magnitude of vector 1
+    mag2 = 0     # Magnitude of vector 2
+    
+    # Loop through all elements in the vectors
+    for i in range(len(v1)):
+        a = v1[i]
+        b = v2[i]
+        dot += a * b      # Sum of products
+        mag1 += a * a     # Sum of squares for vector 1
+        mag2 += b * b     # Sum of squares for vector 2
+        
+    # If either vector has mag 0 , similarity is undefined. Return 0  
+    try:    
+        return dot / ((mag1 ** 0.5) * (mag2 ** 0.5))
+    except ZeroDivisionError:
+        return 0.0
+
+# 4.3. Final OP3
+def op3(sa3_15_sa2s,sa2_vectors):
+    op3_result = {} # Final result: { sa3_name: [sa2_1, sa2_2, similarity] }
+    
+    # Loop through each SA3
+    for sa3_name, sa2_list in sa3_15_sa2s.items():
+        if len(sa2_list) < 2:
+            print(f"Warning: Not enough SA2s to compare in SA3: '{sa3_name}'.")
+            continue
+
+        best_score = -1       # Current highest similarity score
+        best_pair = ('', '')  # Best matching SA2 pair
+        
+        # Compare each unique pair of SA2s
+        for i in range(len(sa2_list)):
+            for j in range(i + 1, len(sa2_list)):
+                sa2a = sa2_list[i]
+                sa2b = sa2_list[j]
+
+                vec1 = sa2_vectors.get(sa2a, []) # Get age vector for SA2 A
+                vec2 = sa2_vectors.get(sa2b, []) # Get age vector for SA2 B
+                
+                if vec1 is None or vec2 is None:
+                    print(f"Warning: Missing vector for SA2 pair '{sa2a}','{sa2b}'.")
+                    continue
+    
+                score = cosine_similarity(vec1, vec2) # Calculate similarity
+                
+                # Update if this pair is more similar than previous best pair
+                if score > best_score:
+                    best_score = score
+                    best_pair = (sa2a, sa2b)
+        
+        # Store the best pair and similarity score (rounded) for this SA3
+        if best_pair[0] and best_pair[1]:
+            sorted_pair = sorted(best_pair)
+            op3_result[sa3_name] = [sorted_pair[0], sorted_pair[1], round(best_score, 4)]
+        else:
+            print(f"Warning: No valid SA2 pair found for SA3 '{sa3_name}'.")
+    
+    return op3_result
+
 # ----------------------------------------------------------------------
 
 # This is the main function
@@ -463,13 +591,33 @@ def main(csvfile_1,csvfile_2):
     state_dict = area_dict(final_csv1,header_map1,'s_t code','s_t name')
     sa3_dict = area_dict(final_csv1,header_map1,'sa3 code','sa3 name')
     sa2_dict = area_dict(final_csv1,header_map1,'sa2 code','sa2 name')
-
+    
+    # OP1
     OP1_result, sa3_pop, sa2_pop = op1(csv2_header, final_csv2, header_map2, sa2_index_2, state_dict, sa3_dict, sa2_dict)
     #op() result is broken down because 'sa3_pop' and 'sa2_pop' are needed for op2
 
-    OP2_result = op2(sa3_pop, sa2_pop, sa3_dict, sa2_dict)
+    # OP2
+    OP2_result,sa3_total,sa2_total = op2(sa3_pop, sa2_pop, sa3_dict, sa2_dict)
     
-    return OP2_result
+    # OP3
+    sa3_15_sa2s = get_sa3_15_sa2s(sa2_dict,sa3_dict)
+    sa2_vectors = build_sa2_vectors(sa3_15_sa2s,sa2_pop)
+    
+    # Filter out SA2s with 0 population values
+    for sa3_name in list(sa3_15_sa2s.keys()):
+        filtered_sa3_15_sa2s = []
+        for sa2 in sa3_15_sa2s[sa3_name]:
+            if sa2 in sa2_vectors:
+                filtered_sa3_15_sa2s.append(sa2)
+
+        if len(filtered_sa3_15_sa2s) >= 2:
+            sa3_15_sa2s[sa3_name] = filtered_sa3_15_sa2s
+        else:
+            del sa3_15_sa2s[sa3_name]  # Remove SA3 completely
+    
+    OP3_result = op3(sa3_15_sa2s,sa2_vectors)
+    
+    return OP3_result
     
     
     
