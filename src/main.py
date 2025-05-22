@@ -1,3 +1,5 @@
+# Name: Juan Yeremia Yovian
+# Student ID: 24911605
 
 # STEP 1: DATA PREPARATION
 # 1.1. Read and extract data
@@ -187,6 +189,12 @@ def make_agedict(csv2_header):
 # 2.3. Get population count
 def get_pop_count(csv2_header,csv2_data,header_map2,area_level_dict,sa2_index,level):
     agedict = make_agedict(csv2_header)
+    
+    # Create a reverse 'area_dict' for sorting later in the function
+    name_to_code = {}
+    for code in area_level_dict:
+        name = area_level_dict[code]
+        name_to_code[name] = code
 
     for row in csv2_data:
         # 1. Get sa2 code
@@ -213,6 +221,10 @@ def get_pop_count(csv2_header,csv2_data,header_map2,area_level_dict,sa2_index,le
                 agedict[age_group][area_name] += pop
             except:
                 continue # Skip invalid values
+    
+    # Dictionary sorting by area code
+    for age_group in agedict:
+        agedict[age_group] = dict(sorted(agedict[age_group].items(),key=lambda x: name_to_code.get(x[0],'')))
 
     return agedict
 
@@ -347,11 +359,9 @@ def std_dev(sa2_code,sa2_pop,sa2_dict):
                 print(f"Invalid population value for '{sa2_name}' in '{age_group}': {pop}")
                 continue
     
-        if not curr_sa2_pop or len(surr_sa2_pop) < 2:  # If curr_sa2_pop empty or only one age group has value, return 0.0 std dev
+        if not curr_sa2_pop or len(curr_sa2_pop) < 2:  # If curr_sa2_pop empty or only one age group has value, return 0.0 std dev
             print(f"Warning: No population values found for SA2 '{sa2_name}'.")
             return 0.0
-        
-        
         
         # std dev calculation
         mean = sum(curr_sa2_pop)/len(curr_sa2_pop)
@@ -617,7 +627,45 @@ def main(csvfile_1,csvfile_2):
     
     OP3_result = op3(sa3_15_sa2s,sa2_vectors)
     
-    return OP3_result
+    return OP1_result,OP2_result,OP3_result
     
-    
-    
+"""
+
+Debugging Documentation:
+
+Issue 1 – Data Preparation (2024-05-11)
+- Error Description:
+  The code initially assumed that both input files had a column labeled exactly as 'sa2 code', but in reality, the column names and positions varied.
+- Erroneous Code Snippet:
+  sa2_index_1 = header_map1['sa2 code']
+  sa2_index_2 = header_map2['sa2 code']
+- Test Case:
+  One CSV file used 'SA2 Code', while the other had the SA2 code column with a different label.
+- Reflection:
+  I removed the hardcoded assumption and wrote detect_sa2_index() to scan each row for a column where values are 9-digit numbers.
+  This made the code robust against variations in column names and positions and ensured it could detect SA2 codes dynamically in both files.
+
+Issue 2 – OP1 (2024-05-14)
+- Error Description:
+  When multiple areas had the same population value, OP1 sometimes returned the wrong sequence of areas due to incorrect sorting method.
+  I originally sorted the result based on just population value.
+- Erroneous Code Snippet:
+  largest_sa2 = sorted(sa2_pop[age_group], key=sa2_pop[age_group].get)[-1]
+- Test Case:
+  Two SA2s with identical population values caused inconsistent results depending on dictionary order.
+- Reflection:
+  I changed the sorting logic to use population in descending order and break ties using area code.
+  This now complies with the instruction to use alphabetical area code as the tiebreaker.
+
+Issue 3 – OP3 (2024-05-19)
+- Error Description:
+  OP3 produced repeated cosine similarity warnings due to empty or zero-valued population vectors.
+- Erroneous Code Snippet:
+  return dot / ((mag1 ** 0.5) * (mag2 ** 0.5))
+- Test Case:
+  An SA3 with more than 15 SA2s, but some of them had zero in all age groups, led to division by zero errors.
+- Reflection:
+  I added a filter to remove all-zero vectors and added a ZeroDivisionError catch to return 0.0 safely.
+  I also removed SA3s with fewer than 2 valid SA2s to avoid unnecessary comparisons.
+  
+"""
